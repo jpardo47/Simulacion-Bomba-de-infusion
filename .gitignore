@@ -1,0 +1,6 @@
+.claude/
+legacy/
+*.log
+AUDITORIA_TECNICA_Y_PLAN_DE_MEJORA.md
+GUIA_MONTAJE_SIMULACION_BOMBA_INFUSION.md
+node_modules/

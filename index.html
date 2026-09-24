@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INFUSIO-SIM 3D | Banco de Pruebas Biomédico</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ══════════ CABECERA ══════════ -->
+  <header class="top-nav">
+    <div class="brand">
+      <div class="pulse-indicator"></div>
+      <div>
+        <h1>INFUSIO-SIM <span class="badge-version">LAB · 3D</span></h1>
+        <p class="subtitle">Laboratorio universitario · Bombeo peristáltico · medición por pérdida de peso</p>
+      </div>
+    </div>
+    <div class="pills">
+      <div class="status-pill"><span class="pill-dot blue"></span> ATmega328P @16 MHz · 115200 8N1</div>
+      <div class="status-pill"><span class="pill-dot blue"></span> L298N · 12 V · PWM 3.9 kHz</div>
+      <div class="status-pill"><span class="pill-dot" id="pill-dot-modo"></span> Modo: <strong id="pill-modo">STOP</strong></div>
+      <div class="status-pill">Lazo: <strong id="pill-lazo">CERRADO</strong></div>
+      <div class="status-pill">Audio: <strong id="pill-audio">ACTIVO</strong></div>
+      <div class="status-pill" id="pill-uso-wrap">Uso: <strong id="pill-uso">BANCO</strong></div>
+      <div class="status-pill sim-warn">MODO SIMULACIÓN — sin hardware conectado</div>
+    </div>
+  </header>
+
+  <div class="alarm-banner" id="alarm-banner" role="status" aria-live="polite">
+    <span class="alarm-chip ok">SIN ALARMAS ACTIVAS</span>
+  </div>
+
+  <!-- ══════════ REJILLA PRINCIPAL ══════════ -->
+  <main class="grid">
+
+    <!-- ---------- BANCO 3D ---------- -->
+    <section class="panel bench">
+      <div class="panel-header">
+        <h2><span class="icon">🧪</span> Banco de ensayo · Bomba peristáltica</h2>
+        <div class="header-controls">
+          <span class="tag">Unidades: mm · geometría didáctica</span>
+          <button id="btn-vista-reset" class="btn btn-sm btn-outline">Encuadrar todo</button>
+        </div>
+      </div>
+      <div class="bench-note"><strong>PERISTÁLTICA · 3 RODILLOS</strong><span>Motor DC 12 V</span><span>Tubo de silicona</span><span>Celda de carga + HX711</span></div>
+      <div class="viewport" id="viewport-3d"></div>
+      <div class="flow-monitor">
+        <div class="flow-heading"><strong>Succión → impulsión → recogida</strong><label>Tiempo de la práctica
+          <select id="sel-tiempo-sim" class="sel sel-sm" aria-label="Velocidad del tiempo simulado"><option value="1">1× · tiempo real</option><option value="5">5× · acelerado</option><option value="10">10× · acelerado</option></select></label><span id="flow-clock"></span></div>
+        <div class="suction-guide">
+          <div><b>1 · ASPIRACIÓN</b><p>El tubo entra sumergido en el depósito. Al separarse un rodillo, la silicona recupera su sección: baja la presión en ese tramo y entra líquido.</p></div>
+          <div><b>2 · IMPULSIÓN</b><p>Los tres rodillos comprimen sucesivamente la manguera y desplazan el líquido hacia la salida. El motor nunca toca el líquido.</p></div>
+          <div><b>3 · MEDICIÓN EXTERNA</b><p>La celda pesa el depósito. El HX711 entrega muestras al Arduino, que estima Q a partir de la pérdida de masa en 30 s. La balanza de salida comprueba lo recogido.</p></div>
+        </div>
+        <div class="flow-cards">
+          <div class="flow-card sensor-one"><span>Depósito · celda de carga 500 g</span><strong id="flow-source"></strong><small id="flow-reservoir"></small></div>
+          <div class="flow-card pump-card"><span>Bomba peristáltica</span><strong id="flow-pump"></strong><small id="flow-speed"></small></div>
+          <div class="flow-card sensor-two"><span>Caudal por pérdida de peso</span><strong id="flow-weight"></strong><small id="flow-window"></small></div>
+          <div class="flow-card scale-card"><span>Balanza de salida · independiente</span><strong id="flow-mass"></strong><small id="flow-delivery"></small></div>
+        </div>
+        <p id="flow-status" class="flow-status" role="status"></p>
+        <p class="flow-explainer">Sin inyección de aire ni trazadores. Las marcas azules son una ayuda visual y no representan partículas añadidas. El circuito inicia lleno; «Vaciar y cebar» muestra el llenado desde la conexión de servicio. Aspirado y entregado pueden diferir durante el cebado o una oclusión.</p>
+        <p class="flow-explainer">Montaje físico: use manguera apta para cabezal peristáltico, entrada sumergida, conexiones estancas y el depósito cerca de la altura de la bomba. Fije la celda lejos de vibraciones y deje holgura en el tubo para que no tire del depósito. La succión de aire inicial se ilustra mediante el cebado; no se modelan cavitación ni una altura máxima de aspiración validada.</p>
+      </div>
+      <p class="hint">
+        Arrastre para orbitar · rueda para acercar · <kbd>Mayús</kbd>+arrastre para desplazar ·
+        <strong>haga clic en un componente para abrir su ficha e inspeccionarlo en 3D</strong> ·
+        <kbd>Esc</kbd> cierra.
+      </p>
+      <div class="comp-list" id="lista-componentes" aria-label="Componentes del banco"></div>
+    </section>
+
+    <!-- ---------- CONSOLA CLÍNICA ---------- -->
+    <section class="panel console">
+      <div class="panel-header"><h2><span class="icon">📟</span> Control de la bomba</h2></div>
+
+      <div class="oled">
+        <div class="oled-head">
+          <span>BOMBA PERISTÁLTICA · 12 V</span><span>⚡ 12.0 V EXT</span>
+        </div>
+        <div class="oled-main">
+          <span class="oled-label">RITMO PROGRAMADO</span>
+          <div class="oled-big"><span id="oled-rate">120.0</span><span class="oled-unit">mL/h</span></div>
+        </div>
+        <div class="oled-sub">
+          <div class="oled-box"><span class="oled-label">VTBI</span><span id="oled-vtbi">250.0 mL</span></div>
+          <div class="oled-box"><span class="oled-label">VOLUMEN ASPIRADO ESTIMADO</span><span id="oled-vi">0.00 mL</span></div>
+          <div class="oled-box"><span class="oled-label">TIEMPO RESTANTE</span><span id="oled-tiempo">--:--:--</span></div>
+          <div class="oled-box"><span class="oled-label">PWM (D9)</span><span id="oled-pwm">0 / 255</span></div>
+          <div class="oled-box"><span class="oled-label">PRESIÓN DEL MODELO</span><span id="oled-presion">0 mmHg</span></div>
+          <div class="oled-box"><span class="oled-label">CORRIENTE MOTOR</span><span id="oled-corriente">0.000 A</span></div>
+          <div class="oled-box wide"><span class="oled-label">PERIODO DEL LAZO DE CONTROL</span><span id="oled-lazo">—</span></div>
+        </div>
+        <div class="oled-footer" id="oled-footer">EQUIPO EN ESPERA</div>
+      </div>
+
+      <div class="pump-controls">
+        <button id="btn-start" class="btn btn-lg btn-success">▶ START</button>
+        <button id="btn-stop" class="btn btn-lg btn-danger">⏹ STOP</button>
+        <button id="btn-bolo" class="btn btn-lg btn-warning">⚡ BOLO</button>
+        <button id="btn-silenciar" class="btn btn-lg btn-outline">🔔 PAUSA AUDIO</button>
+        <button id="btn-rearmar" class="btn btn-lg btn-outline">↺ REARMAR</button>
+      </div>
+
+      <div class="params">
+        <div class="param-row">
+          <label for="slider-rate">Ritmo objetivo</label>
+          <div class="inline">
+            <input type="range" id="slider-rate" min="1" max="1200" value="120" step="1">
+            <input type="number" aria-label="Ritmo objetivo en mililitros por hora" id="num-rate" value="120" min="1" max="1200" class="num">
+            <span class="unit">mL/h</span>
+          </div>
+        </div>
+
+        <div class="grid3">
+          <div class="mini"><label for="inp-vtbi">VTBI (mL)</label><input type="number" id="inp-vtbi" value="250" step="10" class="num"></div>
+          <div class="mini"><label for="inp-bolo-vol">Bolo: dosis (mL)</label><input type="number" id="inp-bolo-vol" value="2.0" step="0.5" class="num"></div>
+          <div class="mini"><label for="inp-bolo-vel">Bolo: ritmo (mL/h)</label><input type="number" id="inp-bolo-vel" value="600" step="50" class="num"></div>
+        </div>
+
+        <div class="param-row">
+          <label for="sel-sensor">Sensor de caudal</label>
+          <select id="sel-sensor" class="sel">
+            <option value="gravimetrico" selected>Celda de carga + HX711 · sin contacto con el líquido</option><option hidden value="optico">Opción A · Tiempo de vuelo óptico (D2 / D3)</option>
+            <option hidden value="hall">Opción B · Turbina de efecto Hall YF-S401</option>
+          </select>
+        </div>
+
+        <div class="grid3">
+          <div class="mini"><label for="inp-kp">K<sub>p</sub></label><input type="number" id="inp-kp" value="0.5" step="0.1" class="num"></div>
+          <div class="mini"><label for="inp-ki">K<sub>i</sub> (1/s)</label><input type="number" id="inp-ki" value="0.015" step="0.05" class="num"></div>
+          <div class="mini" hidden><label for="inp-trazador-vol">Trazador (mL)</label><input type="number" id="inp-trazador-vol" value="0.05" step="0.01" class="num"></div>
+        </div>
+
+        <fieldset class="fset">
+          <legend>Geometría del tubo: nominal y real</legend>
+          <div class="grid3">
+            <div class="mini" hidden><label for="inp-d-nominal">d nominal (mm)</label><input type="number" id="inp-d-nominal" value="100.0" step="0.1" class="num"></div>
+            <div class="mini"><label for="inp-dia-nominal">D nominal (mm)</label><input type="number" id="inp-dia-nominal" value="4.00" step="0.01" class="num"></div>
+            <div class="mini"><label for="inp-dia-real">D <em>real</em> (mm)</label><input type="number" id="inp-dia-real" value="4.12" step="0.01" class="num real"></div>
+          </div>
+          <p class="fnote">El peso determina Q; el diámetro nominal solo interviene al inferir la velocidad mediante V = Q/A.</p>
+        </fieldset>
+
+        <div class="param-row">
+          <label for="sel-fluido">Fluido</label>
+          <select id="sel-fluido" class="sel">
+            <option value="agua">Agua destilada · ρ = 0.9982 g/mL</option>
+            <option value="salina">Salina 0.9 % · ρ = 1.0046 g/mL</option>
+          </select>
+        </div>
+
+        <div class="mini"><label for="inp-densidad">Densidad programada (g/mL)</label><input id="inp-densidad" class="num" type="number" value="0.9982" min="0.501" max="1.999" step="0.0001"></div>
+        <div class="toggles">
+          <label hidden class="tog destacado"><input type="checkbox" id="chk-modo-banco" checked><span class="slider"></span> <strong>Modo banco</strong> — inhibe la alarma de aire</label>
+          <p class="fnote">La medición de caudal usa solo la masa del depósito. El pesaje no sustituye un detector de aire ni comprueba por sí solo la entrega distal.</p>
+          <label class="tog"><input type="checkbox" id="chk-lazo" checked><span class="slider"></span> Lazo cerrado sobre el sensor</label>
+          <label class="tog"><input type="checkbox" id="chk-oclusion"><span class="slider"></span> Pinzar el tubo (oclusión distal)</label>
+          <label hidden class="tog"><input type="checkbox" id="chk-auto-trazador"><span class="slider"></span> Inyección periódica de trazador</label>
+        </div>
+
+        <div class="btn-row">
+          <button hidden id="btn-inyectar" class="btn btn-sm btn-cyan">💉 Inyectar trazador</button>
+          <button id="btn-purgar" class="btn btn-sm btn-secondary">🔄 Purgar</button>
+          <button id="btn-cebar" class="btn btn-sm btn-secondary">🫗 Vaciar y cebar</button>
+          <button id="btn-tarar" class="btn btn-sm btn-secondary">⚖ Tarar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- FRANJA DE MEDIDAS ---------- -->
+    <section class="panel strip-panel">
+      <div class="panel-header">
+        <h2><span class="icon">📐</span> Metrología: pérdida de peso del depósito frente a masa recogida</h2>
+        <span class="tag">la balanza es el patrón, no el sensor</span>
+      </div>
+      <div class="strip">
+        <div class="item"><span class="label">Ventana de pesaje</span><span class="val" id="m-delta-t">—</span><span class="u">s</span></div>
+        <div class="item"><span class="label">Velocidad inferida de Q/A</span><span class="val" id="m-vel-tof">—</span><span class="u">mm/s</span></div>
+        <div class="item hl"><span class="label">Q ASPIRADO (HX711)</span><span class="val" id="m-q-tof">—</span><span class="u">mL/min</span></div>
+        <div class="item hl2"><span class="label">Q GRAVIMÉTRICO (patrón)</span><span class="val" id="m-q-grav">—</span><span class="u">mL/min</span></div>
+        <div class="item truth"><span class="label">Q real (verdad del modelo)</span><span class="val" id="m-q-real">0.000</span><span class="u">mL/min</span></div>
+        <div class="item"><span class="label">Masa en balanza</span><span class="val" id="m-masa">0.00</span><span class="u">g</span></div>
+        <div class="item"><span class="label">Error METROLÓGICO<br><small>HX711 vs balanza</small></span><span class="val" id="m-error-met">—</span></div>
+        <div class="item"><span class="label">Error de SEGUIMIENTO<br><small>real vs consigna</small></span><span class="val" id="m-error-seg">—</span></div>
+      </div>
+    </section>
+
+    <!-- ---------- OSCILOSCOPIO ---------- -->
+    <section class="panel scope-panel">
+      <div class="panel-header">
+        <h2><span class="icon">📈</span> Osciloscopio digital · muestreo simulado a 1 kHz</h2>
+        <div class="header-controls">
+          <select id="sel-scope-canal" class="sel sel-sm">
+            <option value="caudal">Ch3: Caudal + consigna</option>
+            <option value="presion">Ch3: Presión de línea</option>
+            <option value="corriente">Ch3: Corriente del motor</option>
+          </select>
+          <select id="sel-scope-tiempo" class="sel sel-sm">
+            <option value="20">20 ms/div</option>
+            <option value="50">50 ms/div</option>
+            <option value="200" selected>200 ms/div</option>
+            <option value="500">500 ms/div</option>
+            <option value="1000">1 s/div</option>
+          </select>
+          <label class="chk" hidden><input type="checkbox" id="chk-scope-trig"> Disparo óptico (desactivado)</label>
+        </div>
+      </div>
+      <div class="scope-wrap"><canvas id="scope-canvas"></canvas></div>
+      <div class="legend">
+        <span><i class="c cyan"></i> Ch1 · muestra HX711 (evento)</span>
+        <span><i class="c purple"></i> Ch2 · motor habilitado</span>
+        <span><i class="c green"></i> Ch3 · magnitud analógica</span>
+        <span><i class="c yellow"></i> Consigna</span>
+      </div>
+    </section>
+
+    <!-- ---------- FÍSICA INTERNA ---------- -->
+    <section class="panel physics-panel">
+      <div class="panel-header">
+        <h2><span class="icon">⚙️</span> Verdad del modelo</h2>
+        <span class="tag warn">no disponible en hardware real</span>
+      </div>
+      <div class="mini-grid">
+        <div><span class="mini-k">Presión de línea</span><span class="mini-val" id="fis-presion">—</span></div>
+        <div><span class="mini-k">Volumen en compliancia</span><span class="mini-val" id="fis-almacenado">—</span></div>
+        <div><span class="mini-k">Velocidad del motor</span><span class="mini-val" id="fis-omega">—</span></div>
+        <div><span class="mini-k">Corriente de armadura</span><span class="mini-val" id="fis-corriente">—</span></div>
+        <div><span class="mini-k">V media al motor</span><span class="mini-val" id="fis-vmotor">—</span></div>
+        <div><span class="mini-k">Velocidad media del fluido</span><span class="mini-val" id="fis-vmedia">—</span></div>
+        <div><span class="mini-k">Reynolds</span><span class="mini-val" id="fis-reynolds">—</span></div>
+        <div hidden><span class="mini-k">Aire entregado</span><span class="mini-val" id="fis-aire">—</span></div>
+        <div><span class="mini-k">Pérdida por fluencia del tubo</span><span class="mini-val" id="fis-fluencia">—</span></div>
+        <div hidden><span class="mini-k">k del trazador (V<sub>traz</sub>/V<sub>media</sub>)</span><span class="mini-val" id="fis-ktrazador">—</span></div>
+        <div hidden><span class="mini-k">Velocidad del trazador</span><span class="mini-val" id="fis-vtrazador">—</span></div>
+        <div><span class="mini-k">Resolución de 1 LSB de PWM</span><span class="mini-val" id="fis-lsb">—</span></div>
+        <div class="span2"><span class="mini-k">1 LSB como fracción de la consigna</span><span class="mini-val" id="fis-lsb-rel">—</span></div>
+      </div>
+      <p class="fnote">
+        Si un solo escalón de PWM vale más del 5 % de la consigna, la cuantización del actuador
+        ya impide cumplir el criterio de exactitud, por muy bien ajustado que esté el PI.
+      </p>
+    </section>
+
+    <!-- ---------- TERMINAL ---------- -->
+    <section class="panel term-panel">
+      <div class="panel-header">
+        <h2><span class="icon">💻</span> Monitor serial · UART 115200</h2>
+        <div class="header-controls">
+          <label class="chk"><input type="checkbox" id="chk-csv"> Modo CSV</label>
+          <label class="chk"><input type="checkbox" id="chk-autoscroll" checked> Auto-scroll</label>
+          <button id="btn-exportar" class="btn btn-xs btn-cyan">Exportar CSV</button>
+          <button id="btn-limpiar" class="btn btn-xs btn-outline">Limpiar</button>
+        </div>
+      </div>
+      <div class="terminal" id="serial-output"></div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>
+      Banco didáctico de bioingeniería · modelo de planta y firmware <strong>separados</strong> ·
+      inspirado en los principios de <strong>IEC 60601-2-24</strong> e <strong>IEC 60601-1-8</strong>
+      (el simulador no implementa la norma ni la sustituye).
+      <a href="AUDITORIA_LABORATORIO_2026-09-23.md">Auditoría de esta revisión y mejoras pendientes</a>.
+    </p>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="src/config.js"></script>
+<script src="src/plant.js"></script>
+<script src="src/hardware.js"></script>
+<script src="src/firmware.js"></script>
+<script src="src/registry.js"></script>
+<script src="src/scene3d.js"></script>
+<script src="src/inspector.js"></script>
+<script src="src/ui.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
